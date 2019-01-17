@@ -1,4 +1,4 @@
-from random import randint
+from random import randint, shuffle
 import math
 
 row_totals = []  # gives totals that must be matched by rand values
@@ -105,6 +105,27 @@ def get_tables2(table_count, exp_table):
     return tables
 
 
+def get_table_hypergeo(perm, row_totals_cpy):
+    shuffle(perm)
+    table = [[0] * 96, [0] * 96]
+    j = 0
+    for i in perm:
+        while row_totals_cpy[j] == 0:
+            j += 1
+        table[i][j] += 1
+        row_totals_cpy[j] -= 1
+    return table
+
+
+def get_tables_hypergeo(table_count, exp_table):
+    sum_margins(exp_table)
+    tables = []
+    permutation = [0] * col_totals[0] + [1] * col_totals[1]
+    for i in range(table_count):
+        tables.append(get_table_hypergeo(permutation, row_totals.copy()))
+    return tables
+
+
 def logfac(x):
     return math.log(math.factorial(x))
 
@@ -142,7 +163,7 @@ def get_all_p(tables, exp_table):
 
 if __name__ == "__main__":
     main_table = rand_exp_table(300, 96)  # Nested list cols then rows
-    rand_tables = get_tables2(1000, main_table)  # This is where all the tables are stored as tuples of the form (col_a, col_b)
+    rand_tables = get_tables_hypergeo(1000, main_table)  # This is where all the tables are stored as tuples of the form (col_a, col_b)
     print(rand_tables)
 
     # get_all_p(rand_tables, main_table)
