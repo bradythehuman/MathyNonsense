@@ -1,17 +1,33 @@
 from random import randrange
+import threading
 
 
 def expr1():
     init_cell = Cell(mr=20)
-    cul = Culture(init_cell, 100000, 1000, 1, 2000, 20, 1)
+    cul = Culture(init_cell, 1000000, 100, 1, 2000, 20, 1, threads=4)
     cul.passage(20)
     cul.sort_burden(20)
     cul.analyze_nd_ratio()
     cul.print_analysis()
 
 
+class DivLog:
+    def __init__(self, suc=0, fat=0):
+        self.suc_div = suc
+        self.fatalities = fat
+
+    def success():
+        self.suc_div += 1
+
+    def fatality():
+        self.fatalities += 1
+
+    def get_eex_ratio():
+        return self.suc_div / self.fatalities
+
+
 class Culture:
-    def __init__(self, init_cell, max_density, dil_ratio, max_fit, gene_count, nd_ratio, nc_ratio):
+    def __init__(self, init_cell, max_density, dil_ratio, max_fit, gene_count, nd_ratio, nc_ratio, threads=1):
         self.cells = [init_cell]
         self.max_density = max_density
         self.dil_ratio = dil_ratio
@@ -21,11 +37,13 @@ class Culture:
         self.nc_ratio = nc_ratio # noncoding ratio
         self.sort = []
         self.analysis = []
+        self.div_logs = []
+        self.threads = threads
 
     def density(self):
         while len(self.cells) < self.max_density:
             print(len(self.cells))
-            self.wt_gen()
+            self.threaded_wt_gen()
 
     def dilute(self, ratio):
         transfer = []
@@ -59,6 +77,7 @@ class Culture:
                 curr_cells += burden_count[curr_burden]
             max_burden_by_bin.append(curr_burden)
             self.sort.append([])
+        print(max_burden_by_bin)
         for cell in self.cells:
             i = 0
             while cell.get_burden() > max_burden_by_bin[i]:
@@ -82,19 +101,38 @@ class Culture:
         if header:
             print(header)
         for i in range(len(self.analysis)):
-            print("bin " + str(i) + ": " + str(self.sort[i]) + " -> " + str(self.analysis[i]))
+            print("bin " + str(i) + ": " + str(self.analysis[i]))
 
-    def wt_gen(self):
+    def threaded_wt_gen(self):
+        if self.threads == 1:
+            self.cells = wt_gen([self.cells], 0)
+            return 0
+        n = len(self.cells) / self.threads + 1
+        cell_alloc = []
+        threads = []
+        for i in range(0, len(self.cells), n):
+            cell_alloc.append(self.cells[i:i+n])
+            threads.append(threading.Thread(target=self.wt_gen, args=(cell_alloc, i,)))
+            threads[i].start()
+        for thread in threads:
+            thread.join()
+        self.cells = []
+        for cells in cell_alloc:
+            self.cells += cells
+
+    def wt_gen(self, cells_lst, index):
+        cells = cells_lst[index]
         for i in range(1, self.max_fit + 1):
             dots = []
-            while self.cells:
-                curr = self.cells.pop()
+            while cells:
+                curr = cells.pop()
                 if curr.fitness >= i:
                     for dot in curr.divide(self.gene_count, self.nc_ratio, self.nd_ratio):
                         dots.append(dot)
                 else:
                     dots.append(curr)
-            self.cells = dots
+            cells = dots
+        return cells
 
 
 class Cell:
