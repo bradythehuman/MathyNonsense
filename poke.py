@@ -59,6 +59,7 @@ class Culture:
                 curr_cells += burden_count[curr_burden]
             max_burden_by_bin.append(curr_burden)
             self.sort.append([])
+        print(max_burden_by_bin)
         for cell in self.cells:
             i = 0
             while cell.get_burden() > max_burden_by_bin[i]:
@@ -82,7 +83,7 @@ class Culture:
         if header:
             print(header)
         for i in range(len(self.analysis)):
-            print("bin " + str(i) + ": " + str(self.sort[i]) + " -> " + str(self.analysis[i]))
+            print("bin " + str(i) + ": " + str(self.analysis[i]))
 
     def wt_gen(self):
         for i in range(1, self.max_fit + 1):
