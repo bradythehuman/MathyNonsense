@@ -96,6 +96,7 @@ class Culture:
                 curr_cells += burden_count[curr_burden]
             max_burden_by_bin.append(curr_burden)
             self.sort.append([])
+        print(max_burden_by_bin)
         for cell in self.cells:
             i = 0
             while cell.get_burden() > max_burden_by_bin[i]:
