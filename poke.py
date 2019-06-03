@@ -1,14 +1,36 @@
 from random import randrange
-import threading
+from multiprocessing import Process
+import os
+from scipy.stats import binom
 
-
+# ratio of 64 n to d mutations is based on comparing rate of eg reccessive
+# lethals to overall mutations per division
 def expr1():
-    init_cell = Cell(mr=20)
-    cul = Culture(init_cell, 1000000, 100, 1, 2000, 20, 1, threads=4)
-    cul.passage(20)
+    init_cell = Cell(mr=70)
+    cul = Culture(init_cell, 100000, 500, 1, 1000, 64, cores=4)
+    cul.passage(10)
     cul.sort_burden(20)
     cul.analyze_nd_ratio()
     cul.print_analysis()
+
+
+def chunks(l, n):
+    for i in range(0, len(l), n):
+        yield l[i:i+n]
+
+def wt_gen(cells):
+    print("Ding!")
+    for i in range(1, self.max_fit + 1):
+        dots = []
+        while cells:
+            curr = cells.pop()
+            if curr.fitness >= i:
+                for dot in curr.divide(self.gene_count, self.nd_ratio):
+                    dots.append(dot)
+            else:
+                dots.append(curr)
+        cells = dots
+    self.tmp_cells += cells
 
 
 class DivLog:
@@ -27,29 +49,26 @@ class DivLog:
 
 
 class Culture:
-    def __init__(self, init_cell, max_density, dil_ratio, max_fit, gene_count, nd_ratio, nc_ratio, threads=1):
+    def __init__(self, init_cell, max_density, dil_ratio, max_fit, gene_count, nd_ratio, cores=1):
         self.cells = [init_cell]
+        self.tmp_cells = []
         self.max_density = max_density
         self.dil_ratio = dil_ratio
         self.max_fit = max_fit  # maximum logical fitness for this cell type/experiment
         self.gene_count = gene_count
         self.nd_ratio = nd_ratio # neutral to deluterious ratio
-        self.nc_ratio = nc_ratio # noncoding ratio
         self.sort = []
         self.analysis = []
         self.div_logs = []
-        self.threads = threads
+        self.cores = cores
 
     def density(self):
         while len(self.cells) < self.max_density:
-            print(len(self.cells))
             self.threaded_wt_gen()
+            # print(str(len(self.cells)) + " / " + str(self.max_density))
 
     def dilute(self, ratio):
-        transfer = []
-        for i in range(0, len(self.cells), ratio):
-            transfer.append(self.cells[i])
-        self.cells = transfer
+        self.cells = self.cells[::ratio]
 
     def passage(self, count):
         for i in range(count - 1):
@@ -77,7 +96,6 @@ class Culture:
                 curr_cells += burden_count[curr_burden]
             max_burden_by_bin.append(curr_burden)
             self.sort.append([])
-        print(max_burden_by_bin)
         for cell in self.cells:
             i = 0
             while cell.get_burden() > max_burden_by_bin[i]:
@@ -104,55 +122,57 @@ class Culture:
             print("bin " + str(i) + ": " + str(self.analysis[i]))
 
     def threaded_wt_gen(self):
-        if self.threads == 1:
-            self.cells = wt_gen([self.cells], 0)
-            return 0
-        n = len(self.cells) / self.threads + 1
-        cell_alloc = []
-        threads = []
-        for i in range(0, len(self.cells), n):
-            cell_alloc.append(self.cells[i:i+n])
-            threads.append(threading.Thread(target=self.wt_gen, args=(cell_alloc, i,)))
-            threads[i].start()
-        for thread in threads:
-            thread.join()
-        self.cells = []
-        for cells in cell_alloc:
-            self.cells += cells
+        self.tmp_cells = []
+        if self.cores == 1:
+            self.wt_gen(self.cells)
+        else:
+            procs = []
+            n = len(self.cells) / self.cores + 1
+            sublsts = list(chunks(self.cells, n))
+            for i in range(len(procs)):
+                proc = Process(target=self.wt_gen, args=(sublsts[i],))
+                procs.append(proc)
+                proc.start()
+            for proc in procs:
+                proc.join()
+        self.cells = self.tmp_cells
 
-    def wt_gen(self, cells_lst, index):
-        cells = cells_lst[index]
+    def wt_gen(self, cells):
+        print("Ding!")
         for i in range(1, self.max_fit + 1):
             dots = []
             while cells:
                 curr = cells.pop()
                 if curr.fitness >= i:
-                    for dot in curr.divide(self.gene_count, self.nc_ratio, self.nd_ratio):
+                    for dot in curr.divide(self.gene_count, self.nd_ratio):
                         dots.append(dot)
                 else:
                     dots.append(curr)
             cells = dots
-        return cells
+        self.tmp_cells += cells
+
 
 
 class Cell:
+    genome_size = 24200000
+
     def __init__(self, n_mut=0, d_mut=0, fit=1, mr=1):
         self.n_mut = n_mut  # assume no epistatic interactions
         self.d_mut = d_mut  # assumed reccessive lethal
         self.fitness = fit  # relative to WT
         self.mr = mr  # in mutations per division
 
-    def mutate(self, mutations, gene_count, nc_ratio, nd_ratio):
-        for i in range(0, mutations):
-            if randrange(nc_ratio) == 0:
-                if randrange(nd_ratio) == 0:
-                    self.d_mut += 1
-                    self.adj_fit(0, gene_count, self.d_mut)
-                else:
-                    self.n_mut += 1
-                    # self.adj_fit(5, 250)
+    def mutate(self, mutations, gene_count, nd_ratio):
+        x = binom.rvs(self.genome_size, float(self.mr) / self.genome_size)
+        for i in range(0, int(x)):
+            if randrange(nd_ratio) == 0:
+                self.d_mut += 1
+                self.adj_fit(0, gene_count, self.d_mut)
+            else:
+                self.n_mut += 1
+                # self.adj_fit(5, 250)
 
-    def divide(self, gene_count, nc_ratio, nd_ratio):
+    def divide(self, gene_count, nd_ratio):
         if self.fitness:
             dots = [Cell(), Cell()]  # dot ers
             for dot in dots:
@@ -160,16 +180,17 @@ class Cell:
                 dot.d_mut = self.d_mut
                 dot.fitness = self.fitness
                 dot.mr = self.mr
-                dot.mutate(self.mr, gene_count, nc_ratio, nd_ratio)
+                dot.mutate(self.mr, gene_count, nd_ratio)
             return dots
         return []
 
-    def adj_fit(self, fit, odds_n, odds_d=1, req_viab=True):
-        if (self.fitness or not req_viab) and randrange(odds_n) + 1 <= odds_d:
+    def adj_fit(self, fit, targets, successes, req_viab=True):
+        if (self.fitness or not req_viab) and randrange(targets) + 1 <= successes:
             self.fitness = fit
 
     def get_burden(self):
         return self.d_mut + self.n_mut
 
 if __name__ == "__main__":
+    os.nice(-20)
     expr1()
